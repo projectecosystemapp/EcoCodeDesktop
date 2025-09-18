@@ -1,0 +1,51 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+yarn.lock
+pnpm-lock.yaml
+package-lock.json
+
+# Builds
+/dist/
+/build/
+*.tsbuildinfo
+
+# Electron / Vite
+apps/desktop/dist/
+apps/desktop/out/
+apps/desktop/.vite/
+*.asar
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Python
+services/orchestrator/.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.env
+.env.*
+.mypy_cache/
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Orchestrator packaging artifacts
+services/orchestrator/eco_orchestrator.egg-info/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
+logs/

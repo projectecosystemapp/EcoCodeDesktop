@@ -1,0 +1,24 @@
+{
+  "name": "ecocode",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EcoCode early-access platform",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "dev": "concurrently \"npm run dev:desktop\" \"npm run dev:orchestrator\"",
+    "dev:desktop": "npm --prefix apps/desktop run dev",
+    "dev:orchestrator": "make -C services/orchestrator run",
+    "lint": "concurrently \"npm run lint:ts\" \"npm run lint:py\"",
+    "lint:ts": "npm --prefix apps/desktop run lint",
+    "lint:py": "make -C services/orchestrator lint"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
