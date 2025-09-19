@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { StoreOperationManager, LoadingState, ErrorState } from '../../shared/storeUtils';
 import type { SpecificationWorkflow, SpecSummary } from '../../shared/types';
 import type {
   CreateSpecRequest,
@@ -12,8 +13,8 @@ interface SpecState {
   // State
   specs: SpecSummary[];
   selectedSpec: SpecificationWorkflow | null;
-  loading: boolean;
-  error: string | null;
+  loading: LoadingState;
+  error: ErrorState;
   
   // Actions
   loadSpecs: () => Promise<void>;
@@ -35,59 +36,61 @@ interface SpecState {
   
   // Utility
   clearError: () => void;
-  setLoading: (loading: boolean) => void;
+  retryLastOperation: () => Promise<void>;
+  cleanup: () => void;
 }
 
 export const useSpecStore = create<SpecState>((set, get) => ({
   // Initial state
   specs: [],
   selectedSpec: null,
-  loading: false,
-  error: null,
+  loading: StoreOperationManager.createIdleState(),
+  error: StoreOperationManager.createSuccessState(),
 
   // Load all specs
   loadSpecs: async () => {
-    set({ loading: true, error: null });
-    try {
-      const specs = await window.ecocode.specs.list();
-      set({ specs, loading: false });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to load specs',
-        loading: false 
-      });
-    }
+    await StoreOperationManager.executeWithTimeout(
+      async () => {
+        const specs = await (window as any).ecocode.specs.list();
+        set({ specs });
+      },
+      {
+        operation: 'loadSpecs',
+        timeout: 15000,
+      },
+      (state) => set(state)
+    );
   },
 
   // Create new spec
   createSpec: async (request: CreateSpecRequest) => {
-    set({ loading: true, error: null });
-    try {
-      const result = await window.ecocode.specs.create(request);
-      await get().loadSpecs(); // Refresh the list
-      set({ loading: false });
-      return result.id;
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to create spec',
-        loading: false 
-      });
-      throw error;
-    }
+    return StoreOperationManager.executeWithTimeout(
+      async () => {
+        const result = await (window as any).ecocode.specs.create(request);
+        await get().loadSpecs(); // Refresh the list
+        return result.id;
+      },
+      {
+        operation: 'createSpec',
+        timeout: 30000,
+      },
+      (state) => set(state)
+    );
   },
 
   // Select and load a specific spec
   selectSpec: async (specId: string) => {
-    set({ loading: true, error: null });
-    try {
-      const spec = await window.ecocode.specs.get(specId);
-      set({ selectedSpec: spec, loading: false });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to load spec',
-        loading: false 
-      });
-    }
+    await StoreOperationManager.executeWithTimeout(
+      async () => {
+        const spec = await (window as any).ecocode.specs.get(specId);
+        set({ selectedSpec: spec });
+      },
+      {
+        operation: 'selectSpec',
+        timeout: 15000,
+      },
+      (state) => set(state)
+    );
   },
 
   // Refresh the currently selected spec
@@ -100,126 +103,147 @@ export const useSpecStore = create<SpecState>((set, get) => ({
 
   // Update requirements document
   updateRequirements: async (specId: string, content: string, approve?: boolean, feedback?: string) => {
-    set({ loading: true, error: null });
-    try {
-      const request: UpdateDocumentRequest = {
-        content,
-        approve,
-        feedback,
-      };
-      await window.ecocode.specs.updateRequirements(specId, request);
-      await get().refreshSelectedSpec();
-      await get().loadSpecs(); // Refresh the list to update status
-      set({ loading: false });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to update requirements',
-        loading: false 
-      });
-      throw error;
-    }
+    return StoreOperationManager.executeWithTimeout(
+      async () => {
+        const request: UpdateDocumentRequest = {
+          content,
+          approve,
+          feedback,
+        };
+        await (window as any).ecocode.specs.updateRequirements(specId, request);
+        await get().refreshSelectedSpec();
+        await get().loadSpecs(); // Refresh the list to update status
+      },
+      {
+        operation: 'updateRequirements',
+        timeout: 25000,
+      },
+      (state) => set(state)
+    );
   },
 
   // Update design document
   updateDesign: async (specId: string, content: string, approve?: boolean, feedback?: string) => {
-    set({ loading: true, error: null });
-    try {
-      const request: UpdateDocumentRequest = {
-        content,
-        approve,
-        feedback,
-      };
-      await window.ecocode.specs.updateDesign(specId, request);
-      await get().refreshSelectedSpec();
-      await get().loadSpecs();
-      set({ loading: false });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to update design',
-        loading: false 
-      });
-      throw error;
-    }
+    return StoreOperationManager.executeWithTimeout(
+      async () => {
+        const request: UpdateDocumentRequest = {
+          content,
+          approve,
+          feedback,
+        };
+        await (window as any).ecocode.specs.updateDesign(specId, request);
+        await get().refreshSelectedSpec();
+        await get().loadSpecs();
+      },
+      {
+        operation: 'updateDesign',
+        timeout: 25000,
+      },
+      (state) => set(state)
+    );
   },
 
   // Update tasks document
   updateTasks: async (specId: string, content: string, approve?: boolean, feedback?: string) => {
-    set({ loading: true, error: null });
-    try {
-      const request: UpdateDocumentRequest = {
-        content,
-        approve,
-        feedback,
-      };
-      await window.ecocode.specs.updateTasks(specId, request);
-      await get().refreshSelectedSpec();
-      await get().loadSpecs();
-      set({ loading: false });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to update tasks',
-        loading: false 
-      });
-      throw error;
-    }
+    return StoreOperationManager.executeWithTimeout(
+      async () => {
+        const request: UpdateDocumentRequest = {
+          content,
+          approve,
+          feedback,
+        };
+        await (window as any).ecocode.specs.updateTasks(specId, request);
+        await get().refreshSelectedSpec();
+        await get().loadSpecs();
+      },
+      {
+        operation: 'updateTasks',
+        timeout: 25000,
+      },
+      (state) => set(state)
+    );
   },
 
   // Approve or reject a phase
   approvePhase: async (specId: string, phase: string, approved: boolean, feedback?: string) => {
-    set({ loading: true, error: null });
-    try {
-      const request: ApprovePhaseRequest = {
-        approved,
-        feedback,
-      };
-      await window.ecocode.specs.approvePhase(specId, phase, request);
-      await get().refreshSelectedSpec();
-      await get().loadSpecs();
-      set({ loading: false });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to process approval',
-        loading: false 
-      });
-      throw error;
-    }
+    return StoreOperationManager.executeWithTimeout(
+      async () => {
+        const request: ApprovePhaseRequest = {
+          approved,
+          feedback,
+        };
+        await (window as any).ecocode.specs.approvePhase(specId, phase, request);
+        await get().refreshSelectedSpec();
+        await get().loadSpecs();
+      },
+      {
+        operation: 'approvePhase',
+        timeout: 20000,
+      },
+      (state) => set(state)
+    );
   },
 
   // Execute a task
   executeTask: async (specId: string, taskId: string) => {
-    set({ loading: true, error: null });
-    try {
-      const request: ExecuteTaskRequest = {};
-      await window.ecocode.specs.executeTask(specId, taskId, request);
-      await get().refreshSelectedSpec();
-      set({ loading: false });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to execute task',
-        loading: false 
-      });
-      throw error;
-    }
+    return StoreOperationManager.executeWithTimeout(
+      async () => {
+        const request: ExecuteTaskRequest = {};
+        await (window as any).ecocode.specs.executeTask(specId, taskId, request);
+        await get().refreshSelectedSpec();
+      },
+      {
+        operation: 'executeTask',
+        timeout: 60000, // Tasks can take longer
+      },
+      (state) => set(state)
+    );
   },
 
   // Update task status
   updateTaskStatus: async (specId: string, taskId: string, status: string) => {
-    set({ loading: true, error: null });
-    try {
-      const request: UpdateTaskStatusRequest = { status };
-      await window.ecocode.specs.updateTaskStatus(specId, taskId, request);
-      await get().refreshSelectedSpec();
-      set({ loading: false });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to update task status',
-        loading: false 
-      });
-      throw error;
-    }
+    return StoreOperationManager.executeWithTimeout(
+      async () => {
+        const request: UpdateTaskStatusRequest = { status };
+        await (window as any).ecocode.specs.updateTaskStatus(specId, taskId, request);
+        await get().refreshSelectedSpec();
+      },
+      {
+        operation: 'updateTaskStatus',
+        timeout: 15000,
+      },
+      (state) => set(state)
+    );
   },
 
   // Utility functions
-  clearError: () => set({ error: null }),
-  setLoading: (loading: boolean) => set({ loading }),
+  clearError: () => set({ error: StoreOperationManager.createSuccessState() }),
+  
+  retryLastOperation: async () => {
+    const { error, selectedSpec } = get();
+    if (!error.operation) {
+      console.warn('No operation to retry');
+      return;
+    }
+    
+    console.log(`Retrying operation: ${error.operation}`);
+    
+    switch (error.operation) {
+      case 'loadSpecs':
+        return get().loadSpecs();
+      case 'selectSpec':
+        if (selectedSpec) {
+          return get().selectSpec(selectedSpec.id);
+        }
+        break;
+      case 'refreshSelectedSpec':
+        return get().refreshSelectedSpec();
+      default:
+        console.warn(`Cannot retry operation: ${error.operation}`);
+    }
+  },
+  
+  cleanup: () => {
+    StoreOperationManager.cleanup();
+  },
 }));

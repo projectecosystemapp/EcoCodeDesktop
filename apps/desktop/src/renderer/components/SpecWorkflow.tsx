@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 import { IconRefresh, IconAlertCircle } from '@tabler/icons-react';
 import { useSpecStore } from '../stores/specStore';
+import { getLoadingCompat, getErrorMessage } from '../../shared/storeCompat';
 import { useApprovalNotifications } from './ApprovalNotifications';
 import {
   SpecList,
@@ -25,8 +26,8 @@ export function SpecWorkflow() {
   const {
     specs,
     selectedSpec,
-    loading,
-    error,
+    loading: loadingState,
+    error: errorState,
     loadSpecs,
     createSpec,
     selectSpec,
@@ -39,6 +40,9 @@ export function SpecWorkflow() {
     updateTaskStatus,
     clearError,
   } = useSpecStore();
+  
+  const loading = getLoadingCompat(loadingState);
+  const error = getErrorMessage(errorState);
 
   const {
     notifications,

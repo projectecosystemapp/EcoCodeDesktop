@@ -18,6 +18,7 @@ import { IconRefresh, IconShieldCheck, IconShieldX, IconFileText, IconSettings }
 
 import type { ProjectInfo } from '../shared/types';
 import { useAppStore } from './store';
+import { getLoadingCompat, getErrorMessage } from '../shared/storeCompat';
 import { SpecWorkflow } from './components';
 
 function ProjectList({
@@ -124,10 +125,13 @@ export function App() {
   const projects = useAppStore((state) => state.projects);
   const refreshProjects = useAppStore((state) => state.refreshProjects);
   const ensureWorkspace = useAppStore((state) => state.ensureWorkspace);
-  const loading = useAppStore((state) => state.loading);
-  const error = useAppStore((state) => state.error);
+  const loadingState = useAppStore((state) => state.loading);
+  const errorState = useAppStore((state) => state.error);
   const health = useAppStore((state) => state.health);
   const hydrateHealth = useAppStore((state) => state.hydrateHealth);
+  
+  const loading = getLoadingCompat(loadingState);
+  const error = getErrorMessage(errorState);
 
   const [selectedProject, setSelectedProject] = useState<ProjectInfo | null>(null);
   const [activeTab, setActiveTab] = useState<string>('workspaces');
