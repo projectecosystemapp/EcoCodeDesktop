@@ -33,6 +33,14 @@ Each component can be developed and deployed independently, but the MVP is inten
 
 Detailed setup instructions and environment configuration steps live in `docs/setup/local.md`.
 
+## Engineering Notes (2025-09-18)
+
+- **Desktop linting parity (`apps/desktop/eslint.config.js`, `apps/desktop/package.json`)**: Migrated to the ESLint 9 flat config with `typescript-eslint` helper and explicit React hook rules. After pulling, run `npm install --workspace apps/desktop` (Node 20.11+) to ensure the new dev dependency is installed, then validate with `npm run lint:ts`.
+- **Renderer state sync (`apps/desktop/src/renderer/App.tsx`)**: Added `selectedProject` to the `useEffect` dependency list so the active selection tracks new project metadata without triggering lint noise.
+- **Python style & typing hardening (`services/orchestrator/eco_api/*`, `services/orchestrator/pyproject.toml`)**: Resolved Ruff findings (import order, union typing, datetime usage) and adopted `typing.Annotated` for FastAPI dependencies. The Bedrock client now uses structural typing for streamed responses, and MyPy ignores for `boto3/botocore` moved into `pyproject` overrides. Run `make -C services/orchestrator lint` followed by `make -C services/orchestrator test` inside the `.venv` (Python 3.13) to reproduce the clean pass.
+- **Version alignment (`services/orchestrator/eco_api/__init__.py`, `services/orchestrator/pyproject.toml`, `CHANGELOG.md`)**: Bumped the library and package version to `0.1.1` to match the latest changelog entry. Tag releases only after the CHANGELOG, code version, and packaging metadata stay in lockstep.
+- **Agent context & prerequisites**: The orchestrator virtualenv lives at `services/orchestrator/.venv` (activate before running `ruff`, `mypy`, or `pytest`). Desktop scripts expect the workspace root `npm install` to have been run and reuse the repo-level lockfile. Network access was required once to install `typescript-eslint`; future offline builds should vendor the package if mirroring is needed. All current tests (`make -C services/orchestrator test`) and linters pass after these updates.
+
 ## Contributing
 
 - Follow the spec-driven workflow: capture requirements under `docs/specs/requirements`, author designs under `docs/specs/designs`, and break implementation tasks into `docs/specs/tasks`.

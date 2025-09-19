@@ -2,8 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "baseUrl": "./src",
-    "types": ["vite/client"]
+    "types": ["vite/client", "jest", "node"]
   },
-  "include": ["src/renderer/**/*", "src/shared/**/*"],
+  "include": ["src/renderer/**/*", "src/shared/**/*", "src/main/**/*"],
   "exclude": ["dist"]
 }

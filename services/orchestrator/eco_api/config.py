@@ -38,6 +38,27 @@ class AgentSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ECOCODE_AGENT_", env_file=None)
 
 
+class SpecSettings(BaseSettings):
+    """Configuration for spec-driven development features."""
+
+    enabled: bool = True
+    specs_directory: str = ".kiro/specs"
+    auto_backup: bool = True
+    backup_retention_days: int = 30
+    max_concurrent_tasks: int = 3
+    task_timeout_minutes: int = 30
+    enable_research_integration: bool = True
+    enable_validation_framework: bool = True
+    enable_error_recovery: bool = True
+    default_requirements_template: str = "ears"
+    default_design_sections: list[str] = Field(default_factory=lambda: [
+        "overview", "architecture", "components", "data_models", 
+        "error_handling", "testing_strategy"
+    ])
+
+    model_config = SettingsConfigDict(env_prefix="ECOCODE_SPEC_", env_file=None)
+
+
 class Settings(BaseSettings):
     """Application configuration."""
 
@@ -47,6 +68,7 @@ class Settings(BaseSettings):
     enforce_encryption: bool = True
     aws: AWSSettings = Field(default_factory=AWSSettings)
     agents: AgentSettings = Field(default_factory=AgentSettings)
+    specs: SpecSettings = Field(default_factory=SpecSettings)
 
     model_config = SettingsConfigDict(env_prefix="ECOCODE_", env_file=None)
 

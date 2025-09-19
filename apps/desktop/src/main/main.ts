@@ -2,9 +2,25 @@ import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
 
 import { registerIpcHandlers } from './ipc';
+import { URLValidator } from './url-validator';
 
 const isMac = process.platform === 'darwin';
 let mainWindow: BrowserWindow | null = null;
+
+/**
+ * Securely opens an external URL after validation
+ */
+function openExternalURLSecurely(url: string): Promise<void> {
+  const validationResult = URLValidator.validateURL(url);
+  
+  if (!validationResult.isValid) {
+    console.error(`[SECURITY] Blocked attempt to open URL: ${url}. Reason: ${validationResult.reason}`);
+    throw new Error(`Security violation: ${validationResult.reason}`);
+  }
+
+  console.log(`[SECURITY] Opening validated URL: ${url}`);
+  return shell.openExternal(url);
+}
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -32,7 +48,11 @@ async function createWindow() {
   }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      openExternalURLSecurely(url);
+    } catch (error) {
+      console.error(`[SECURITY] Failed to open URL securely: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
     return { action: 'deny' };
   });
 }
@@ -53,3 +73,6 @@ app.whenReady().then(async () => {
   registerIpcHandlers();
   await createWindow();
 });
+
+// Export the secure URL opening function for use by IPC handlers
+export { openExternalURLSecurely };

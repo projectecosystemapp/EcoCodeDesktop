@@ -12,11 +12,13 @@ import {
   Stack,
   Text,
   Title,
+  Tabs,
 } from '@mantine/core';
-import { IconRefresh, IconShieldCheck, IconShieldX } from '@tabler/icons-react';
+import { IconRefresh, IconShieldCheck, IconShieldX, IconFileText, IconSettings } from '@tabler/icons-react';
 
 import type { ProjectInfo } from '../shared/types';
 import { useAppStore } from './store';
+import { SpecWorkflow } from './components';
 
 function ProjectList({
   projects,
@@ -128,6 +130,7 @@ export function App() {
   const hydrateHealth = useAppStore((state) => state.hydrateHealth);
 
   const [selectedProject, setSelectedProject] = useState<ProjectInfo | null>(null);
+  const [activeTab, setActiveTab] = useState<string>('workspaces');
 
   useEffect(() => {
     void refreshProjects();
@@ -218,7 +221,24 @@ export function App() {
             {error}
           </Notification>
         )}
-        <ProjectDetails project={selectedProject} />
+        <Tabs value={activeTab} onChange={(value) => setActiveTab(value || 'workspaces')} p="md">
+          <Tabs.List>
+            <Tabs.Tab value="workspaces" leftSection={<IconSettings size={16} />}>
+              Workspaces
+            </Tabs.Tab>
+            <Tabs.Tab value="specs" leftSection={<IconFileText size={16} />}>
+              Spec Workflows
+            </Tabs.Tab>
+          </Tabs.List>
+
+          <Tabs.Panel value="workspaces" pt="md">
+            <ProjectDetails project={selectedProject} />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="specs" pt="md">
+            <SpecWorkflow />
+          </Tabs.Panel>
+        </Tabs>
       </AppShell.Main>
     </AppShell>
   );

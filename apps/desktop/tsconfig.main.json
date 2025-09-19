@@ -6,6 +6,6 @@
     "moduleResolution": "Node",
     "types": ["node"]
   },
-  "include": ["src/main/**/*", "scripts/**/*"],
-  "exclude": ["dist"]
+  "include": ["src/main/**/*"],
+  "exclude": ["dist", "src/main/**/__tests__/**/*", "src/main/**/*.test.ts", "src/main/**/*.spec.ts"]
 }

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -25,10 +27,54 @@ from eco_api.schemas import (
     WorkspaceDocumentResponse,
 )
 from eco_api.workspaces.manager import WorkspaceManager
+from eco_api.specs.router import router as specs_router
 
+# Configure logging based on environment
 configure_logging()
 logger = logging.getLogger(__name__)
-app = FastAPI(title="EcoCode Orchestrator", version=__version__)
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="EcoCode Orchestrator", 
+    version=__version__,
+    description="Spec-driven development orchestration service",
+    docs_url="/docs" if os.getenv("ECOCODE_ENABLE_DOCS", "true").lower() == "true" else None,
+    redoc_url="/redoc" if os.getenv("ECOCODE_ENABLE_DOCS", "true").lower() == "true" else None,
+)
+
+# Add production middleware if enabled
+if os.getenv("ECOCODE_ENABLE_CORS", "false").lower() == "true":
+    from fastapi.middleware.cors import CORSMiddleware
+    
+    allowed_origins = os.getenv("ECOCODE_ALLOWED_ORIGINS", "").split(",")
+    allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins or ["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+# Add security headers middleware
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    
+    # Add security headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    
+    # Add HSTS header if HTTPS is enforced
+    if os.getenv("ECOCODE_ENFORCE_HTTPS", "false").lower() == "true":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    
+    return response
+
+# Include routers
+app.include_router(specs_router)
 
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -44,6 +90,58 @@ WorkspaceManagerDep = Annotated[WorkspaceManager, Depends(get_workspace_manager)
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", version=__version__, timestamp=datetime.now(UTC))
+
+
+@app.get("/health/detailed")
+def detailed_health(settings: SettingsDep) -> dict:
+    """Detailed health check for production monitoring."""
+    try:
+        # Import here to avoid circular imports
+        from eco_api.specs.performance import get_cache_stats
+        
+        # Basic health info
+        health_info = {
+            "status": "healthy",
+            "version": __version__,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "environment": {
+                "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+                "specs_enabled": settings.specs.enabled,
+                "aws_bedrock_enabled": settings.aws.use_bedrock,
+                "aws_s3_enabled": settings.aws.use_s3_sync,
+            },
+            "configuration": {
+                "max_concurrent_specs": settings.specs.max_concurrent_tasks,
+                "task_timeout_minutes": settings.specs.task_timeout_minutes,
+                "auto_backup": settings.specs.auto_backup,
+                "research_integration": settings.specs.enable_research_integration,
+            },
+            "performance": get_cache_stats(),
+        }
+        
+        # Add system info if available
+        try:
+            import psutil
+            process = psutil.Process()
+            health_info["system"] = {
+                "cpu_percent": psutil.cpu_percent(interval=0.1),
+                "memory_percent": psutil.virtual_memory().percent,
+                "process_memory_mb": round(process.memory_info().rss / 1024 / 1024, 2),
+                "open_files": len(process.open_files()),
+                "num_threads": process.num_threads(),
+            }
+        except ImportError:
+            health_info["system"] = {"error": "psutil not available"}
+        
+        return health_info
+        
+    except Exception as e:
+        logger.error(f"Detailed health check failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
 
 
 @app.get("/projects", response_model=ProjectListResponse)
