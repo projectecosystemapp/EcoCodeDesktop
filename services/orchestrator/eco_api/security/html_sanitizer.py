@@ -13,9 +13,19 @@ Requirements addressed:
 
 import re
 import html
+import time
 from typing import Dict, Any, List, Union, Optional
 from dataclasses import dataclass
 from enum import Enum
+from datetime import datetime, UTC
+
+from .security_logger import (
+    log_security_event,
+    create_xss_attempt_event,
+    SecurityEventType,
+    SecuritySeverity,
+    SecurityEvent
+)
 
 
 class SanitizationLevel(str, Enum):
@@ -378,7 +388,9 @@ class HTMLSanitizer:
     def sanitize_with_result(
         self, 
         content: str, 
-        level: Optional[SanitizationLevel] = None
+        level: Optional[SanitizationLevel] = None,
+        user_id: Optional[str] = None,
+        source_ip: Optional[str] = None
     ) -> SanitizationResult:
         """
         Sanitize content and return detailed result.
@@ -386,6 +398,8 @@ class HTMLSanitizer:
         Args:
             content: Content to sanitize
             level: Sanitization level to use
+            user_id: Optional user ID for security logging
+            source_ip: Optional source IP for security logging
             
         Returns:
             SanitizationResult with detailed information
@@ -397,6 +411,10 @@ class HTMLSanitizer:
         threats_detected = self.detect_threats(content)
         sanitized_content = self._sanitize_string(content, level)
         is_safe = len(threats_detected) == 0
+        
+        # Log security event if threats were detected
+        if threats_detected and not is_safe:
+            self._log_xss_attempt(content, threats_detected, user_id, source_ip)
         
         return SanitizationResult(
             sanitized_content=sanitized_content,
@@ -432,6 +450,55 @@ class HTMLSanitizer:
         """
         threats = self.detect_threats(content)
         return len(threats) == 0
+    
+    def _log_xss_attempt(
+        self, 
+        malicious_content: str, 
+        threats_detected: List[str], 
+        user_id: Optional[str] = None, 
+        source_ip: Optional[str] = None
+    ) -> None:
+        """
+        Log XSS attempt for security monitoring.
+        
+        Args:
+            malicious_content: The content that contained threats
+            threats_detected: List of detected threats
+            user_id: Optional user ID
+            source_ip: Optional source IP
+        """
+        try:
+            # Create security event
+            event = SecurityEvent(
+                event_id=f"xss_{int(time.time() * 1000000)}",
+                event_type=SecurityEventType.XSS_ATTEMPT,
+                severity=SecuritySeverity.HIGH,
+                timestamp=datetime.now(UTC),
+                source_ip=source_ip,
+                user_id=user_id,
+                action="content_sanitization",
+                blocked_content=malicious_content[:1000],  # Limit content length
+                threat_indicators=threats_detected,
+                additional_context={
+                    "sanitization_level": self.default_level.value,
+                    "content_length": len(malicious_content),
+                    "threat_count": len(threats_detected)
+                }
+            )
+            
+            # Log the security event
+            log_security_event(event)
+            
+            # Also process with security monitor if available
+            from .security_monitor import process_security_event
+            process_security_event(event)
+            
+        except Exception as e:
+            # Fallback logging to ensure security events are never lost
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to log XSS attempt: {e}")
+            logger.error(f"Original XSS attempt - Threats: {threats_detected}, Content length: {len(malicious_content)}")
 
 
 # Global sanitizer instance for convenience

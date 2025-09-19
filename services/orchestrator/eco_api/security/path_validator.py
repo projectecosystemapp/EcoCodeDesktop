@@ -13,10 +13,20 @@ Requirements addressed:
 
 import os
 import re
+import time
 from pathlib import Path, PurePath
 from typing import List, Optional, Tuple, Union
 from dataclasses import dataclass
 from enum import Enum
+from datetime import datetime, UTC
+
+from .security_logger import (
+    log_security_event,
+    create_path_traversal_event,
+    SecurityEventType,
+    SecuritySeverity,
+    SecurityEvent
+)
 
 
 class PathValidationError(Exception):
@@ -121,13 +131,15 @@ class PathValidator:
         if not self.workspace_root.is_dir():
             raise PathValidationError(f"Workspace root is not a directory: {self.workspace_root}")
     
-    def validate_path(self, path: Union[str, Path], allow_creation: bool = False) -> ValidationResult:
+    def validate_path(self, path: Union[str, Path], allow_creation: bool = False, user_id: Optional[str] = None, source_ip: Optional[str] = None) -> ValidationResult:
         """
         Validate a path for security and correctness.
         
         Args:
             path: Path to validate
             allow_creation: Whether to allow paths that don't exist yet
+            user_id: Optional user ID for security logging
+            source_ip: Optional source IP for security logging
             
         Returns:
             ValidationResult with validation status and sanitized path
@@ -147,6 +159,14 @@ class PathValidator:
             # Check for null bytes
             if '\x00' in path_str:
                 errors.append("Path contains null bytes")
+                # Log security event for null byte injection attempt
+                self._log_security_violation(
+                    path_str, 
+                    "null_byte_injection", 
+                    user_id, 
+                    source_ip,
+                    ["null_bytes_detected"]
+                )
                 return ValidationResult(is_valid=False, errors=errors)
             
             # Check path length
@@ -158,6 +178,14 @@ class PathValidator:
             traversal_check = self._check_traversal_patterns(path_str)
             if not traversal_check.is_valid:
                 errors.extend(traversal_check.errors)
+                # Log security event for path traversal attempt
+                self._log_security_violation(
+                    path_str, 
+                    "path_traversal_attempt", 
+                    user_id, 
+                    source_ip,
+                    ["path_traversal_patterns"]
+                )
                 return ValidationResult(is_valid=False, errors=errors)
             
             # Sanitize the path
@@ -530,3 +558,59 @@ class PathValidator:
         except Exception:
             # If decoding fails, return original
             return path
+    
+    def _log_security_violation(
+        self, 
+        attempted_path: str, 
+        violation_type: str, 
+        user_id: Optional[str] = None, 
+        source_ip: Optional[str] = None,
+        threat_indicators: Optional[List[str]] = None
+    ) -> None:
+        """
+        Log security violations for path validation failures.
+        
+        Args:
+            attempted_path: The path that caused the violation
+            violation_type: Type of violation detected
+            user_id: Optional user ID
+            source_ip: Optional source IP
+            threat_indicators: List of threat indicators
+        """
+        try:
+            # Create security event
+            event = SecurityEvent(
+                event_id=f"path_{violation_type}_{int(time.time() * 1000000)}",
+                event_type=SecurityEventType.PATH_TRAVERSAL_ATTEMPT,
+                severity=SecuritySeverity.HIGH,
+                timestamp=datetime.now(UTC),
+                source_ip=source_ip,
+                user_id=user_id,
+                action="file_path_validation",
+                blocked_content=attempted_path,
+                threat_indicators=threat_indicators or [],
+                additional_context={
+                    "violation_type": violation_type,
+                    "workspace_root": str(self.workspace_root),
+                    "security_level": self.security_level.value
+                }
+            )
+            
+            # Log the security event
+            log_security_event(event)
+            
+            # Also process with security monitor if available
+            try:
+                from .security_monitor import process_security_event
+                process_security_event(event)
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Could not process security event with monitor: {e}")
+            
+        except Exception as e:
+            # Fallback logging to ensure security events are never lost
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to log security violation: {e}")
+            logger.error(f"Original violation - Type: {violation_type}, Path: {attempted_path}")

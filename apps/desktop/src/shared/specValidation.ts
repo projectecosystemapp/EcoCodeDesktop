@@ -59,7 +59,7 @@ export class SpecDirectoryValidator {
     }
 
     // Check for invalid characters for filesystem
-    const invalidChars = /[<>:"/\\|?*\x00-\x1f]/;
+    const invalidChars = /[<>:"/\\|?*\u0000-\u001f]/;
     if (invalidChars.test(featureName)) {
       errors.push({
         code: 'INVALID_FILESYSTEM_CHARS',
@@ -277,31 +277,165 @@ export class SpecDirectoryValidator {
   }
 
   /**
-   * Calculates similarity between two strings using Levenshtein distance
+   * Calculates similarity between two strings using optimized Levenshtein distance
+   * Uses the new OptimizedLevenshteinCalculator for better performance
    */
   private static calculateSimilarity(str1: string, str2: string): number {
-    const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+    return OptimizedLevenshteinCalculator.calculateSimilarity(str1, str2);
+  }
+}
 
-    for (let i = 0; i <= str1.length; i++) {
-      matrix[0][i] = i;
+/**
+ * Space-optimized Levenshtein distance calculator
+ * Requirements: 6.1, 6.2, 6.3, 6.4 - Performance optimization with O(min(m,n)) space complexity
+ */
+export class OptimizedLevenshteinCalculator {
+  private static readonly DEFAULT_MAX_DISTANCE = 1000;
+  private static readonly EARLY_TERMINATION_THRESHOLD = 0.1;
+
+  /**
+   * Calculates Levenshtein distance between two strings with space optimization
+   * Uses O(min(m,n)) space complexity instead of O(m*n)
+   * Requirements: 6.1, 6.2 - Space-optimized algorithm with early termination
+   */
+  static calculateDistance(str1: string, str2: string, maxDistance?: number): number {
+    // Early termination for identical strings
+    if (str1 === str2) {
+      return 0;
     }
 
-    for (let j = 0; j <= str2.length; j++) {
-      matrix[j][0] = j;
+    // Early termination for empty strings
+    if (str1.length === 0) return str2.length;
+    if (str2.length === 0) return str1.length;
+
+    // Apply maximum distance threshold for performance
+    const threshold = maxDistance ?? this.DEFAULT_MAX_DISTANCE;
+    const maxLength = Math.max(str1.length, str2.length);
+    if (maxLength > threshold) {
+      // For very large strings, return early approximation
+      return Math.abs(str1.length - str2.length);
     }
 
-    for (let j = 1; j <= str2.length; j++) {
-      for (let i = 1; i <= str1.length; i++) {
-        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
-        matrix[j][i] = Math.min(
-          matrix[j][i - 1] + 1,     // deletion
-          matrix[j - 1][i] + 1,     // insertion
-          matrix[j - 1][i - 1] + indicator // substitution
+    // Ensure str1 is the shorter string for space optimization
+    let shortStr = str1;
+    let longStr = str2;
+    if (str1.length > str2.length) {
+      shortStr = str2;
+      longStr = str1;
+    }
+
+    const shortLen = shortStr.length;
+    const longLen = longStr.length;
+
+    // Use only two arrays instead of full matrix - O(min(m,n)) space
+    let previousRow = Array(shortLen + 1).fill(0);
+    let currentRow = Array(shortLen + 1).fill(0);
+
+    // Initialize first row
+    for (let i = 0; i <= shortLen; i++) {
+      previousRow[i] = i;
+    }
+
+    // Calculate distance row by row
+    for (let i = 1; i <= longLen; i++) {
+      currentRow[0] = i;
+
+      for (let j = 1; j <= shortLen; j++) {
+        const cost = longStr[i - 1] === shortStr[j - 1] ? 0 : 1;
+        currentRow[j] = Math.min(
+          currentRow[j - 1] + 1,      // insertion
+          previousRow[j] + 1,         // deletion
+          previousRow[j - 1] + cost   // substitution
         );
+      }
+
+      // Early termination if distance is getting too large
+      const minInRow = Math.min(...currentRow);
+      if (minInRow > threshold * this.EARLY_TERMINATION_THRESHOLD) {
+        return threshold;
+      }
+
+      // Swap arrays for next iteration
+      [previousRow, currentRow] = [currentRow, previousRow];
+    }
+
+    return previousRow[shortLen];
+  }
+
+  /**
+   * Calculates similarity ratio between two strings (0.0 to 1.0)
+   * Requirements: 6.3, 6.4 - Optimized similarity calculation with memory efficiency
+   */
+  static calculateSimilarity(str1: string, str2: string, maxDistance?: number): number {
+    // Early termination for identical strings
+    if (str1 === str2) {
+      return 1.0;
+    }
+
+    const distance = this.calculateDistance(str1, str2, maxDistance);
+    const maxLength = Math.max(str1.length, str2.length);
+    
+    // Handle edge case of empty strings
+    if (maxLength === 0) {
+      return 1.0;
+    }
+
+    return (maxLength - distance) / maxLength;
+  }
+
+  /**
+   * Batch calculates similarities for multiple string pairs
+   * Useful for performance when comparing against multiple candidates
+   * Requirements: 6.4 - Memory efficiency for batch operations
+   */
+  static calculateSimilarities(
+    target: string, 
+    candidates: string[], 
+    maxDistance?: number
+  ): Array<{ candidate: string; similarity: number; distance: number }> {
+    return candidates.map(candidate => {
+      const distance = this.calculateDistance(target, candidate, maxDistance);
+      const maxLength = Math.max(target.length, candidate.length);
+      const similarity = maxLength === 0 ? 1.0 : (maxLength - distance) / maxLength;
+      
+      return {
+        candidate,
+        similarity,
+        distance
+      };
+    });
+  }
+
+  /**
+   * Finds the most similar string from a list of candidates
+   * Requirements: 6.1, 6.4 - Performance optimization for similarity matching
+   */
+  static findMostSimilar(
+    target: string, 
+    candidates: string[], 
+    maxDistance?: number
+  ): { candidate: string; similarity: number; distance: number } | null {
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    let bestMatch = {
+      candidate: candidates[0],
+      similarity: this.calculateSimilarity(target, candidates[0], maxDistance),
+      distance: this.calculateDistance(target, candidates[0], maxDistance)
+    };
+
+    for (let i = 1; i < candidates.length; i++) {
+      const similarity = this.calculateSimilarity(target, candidates[i], maxDistance);
+      if (similarity > bestMatch.similarity) {
+        bestMatch = {
+          candidate: candidates[i],
+          similarity,
+          distance: this.calculateDistance(target, candidates[i], maxDistance)
+        };
       }
     }
 
-    const maxLength = Math.max(str1.length, str2.length);
-    return maxLength === 0 ? 1 : (maxLength - matrix[str2.length][str1.length]) / maxLength;
+    return bestMatch;
   }
 }

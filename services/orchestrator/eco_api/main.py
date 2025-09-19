@@ -28,6 +28,7 @@ from eco_api.schemas import (
 )
 from eco_api.workspaces.manager import WorkspaceManager
 from eco_api.specs.router import router as specs_router
+from eco_api.security.security_init import quick_setup_security
 
 # Configure logging based on environment
 configure_logging()
@@ -75,6 +76,39 @@ async def add_security_headers(request, call_next):
 
 # Include routers
 app.include_router(specs_router)
+
+# Include security dashboard router
+from eco_api.security import security_dashboard_router
+app.include_router(security_dashboard_router)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize security system on application startup."""
+    try:
+        # Get workspace root from settings
+        settings = get_settings()
+        workspace_root = str(settings.workspace_root)
+        
+        # Initialize security system
+        success = await quick_setup_security(workspace_root)
+        if success:
+            logger.info("Security system initialized successfully")
+        else:
+            logger.error("Failed to initialize security system")
+    except Exception as e:
+        logger.error(f"Error initializing security system: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Shutdown security system gracefully."""
+    try:
+        from eco_api.security.security_init import shutdown_security_system
+        await shutdown_security_system()
+        logger.info("Security system shutdown completed")
+    except Exception as e:
+        logger.error(f"Error shutting down security system: {e}")
 
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]

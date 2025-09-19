@@ -21,6 +21,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import json
 
+from .security_logger import (
+    log_security_event,
+    create_authorization_failure_event,
+    SecurityEventType,
+    SecuritySeverity,
+    SecurityEvent
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -245,6 +253,10 @@ class AuthorizationValidator:
             
             # Log authorization event
             self._log_authorization_event(auth_event)
+            
+            # Log to security logger if authorization failed
+            if not authorized:
+                self._log_authorization_security_event(auth_event)
             
             # Determine reason for authorization result
             reason = None
@@ -490,6 +502,48 @@ class AuthorizationValidator:
             
         except Exception as e:
             logger.error(f"Error logging authorization failure: {str(e)}")
+    
+    def _log_authorization_security_event(self, auth_event: AuthorizationEvent) -> None:
+        """
+        Log authorization failure to security event system.
+        
+        Args:
+            auth_event: Authorization event that failed
+        """
+        try:
+            # Create security event for authorization failure
+            security_event = SecurityEvent(
+                event_id=f"auth_fail_{auth_event.event_id}",
+                event_type=SecurityEventType.AUTHORIZATION_FAILURE,
+                severity=SecuritySeverity.MEDIUM,
+                timestamp=auth_event.timestamp,
+                source_ip=auth_event.ip_address,
+                user_id=auth_event.user_context.user_id,
+                user_agent=auth_event.user_agent,
+                session_id=auth_event.user_context.session_id,
+                resource=auth_event.resource,
+                action=auth_event.operation,
+                threat_indicators=[
+                    f"permission_required_{auth_event.permission_required.value}",
+                    "authorization_denied"
+                ],
+                additional_context={
+                    "user_roles": [role.value for role in auth_event.user_context.roles],
+                    "user_permissions": [perm.value for perm in auth_event.user_context.permissions],
+                    "required_permission": auth_event.permission_required.value,
+                    **auth_event.additional_context
+                }
+            )
+            
+            # Log the security event
+            log_security_event(security_event)
+            
+            # Also process with security monitor if available
+            from .security_monitor import process_security_event
+            process_security_event(security_event)
+            
+        except Exception as e:
+            logger.error(f"Failed to log authorization security event: {e}")
 
 
 # Convenience functions for common authorization patterns
